@@ -342,10 +342,20 @@ Examples:
     parser.add_argument("--msf-path", default=None, help="Path to Metasploit Framework (auto-detect)")
     parser.add_argument("--output-dir", default=".", help="Output directory (default: current)")
     parser.add_argument("--shift", type=int, default=None, help="Caesar cipher shift 1-5 (default: random)")
-    parser.add_argument("--serve", action="store_true", help="Auto-start HTTP server after generation")
+    parser.add_argument("--serve", nargs="?", const=True, default=False, metavar="PORT", help="Auto-start HTTP server (optional port, e.g. --serve 8081)")
     parser.add_argument("--listen", action="store_true", help="Auto-start msfconsole handler after generation")
 
     args = parser.parse_args()
+
+    # ── Handle --serve with optional port ──
+    if args.serve is not False:
+        if args.serve is not True:
+            try:
+                args.http_port = int(args.serve)
+            except ValueError:
+                print(f"[-] ERROR: Invalid port for --serve: {args.serve}")
+                sys.exit(1)
+        args.serve = True
 
     # ── Resolve paths ──
     if args.msf_path is None:
